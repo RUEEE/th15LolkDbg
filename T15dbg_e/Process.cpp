@@ -10,6 +10,7 @@ float scale=0;
 IDirect3DDevice9* device=NULL;
 ID3DXFont* g_font = NULL;
 HWND windowHwnd=NULL;
+HANDLE current_process=NULL;
 bool is_in_game=false;
 
 LRESULT WINAPI MyWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -67,7 +68,7 @@ void DrawPF()
 	DWORD player = *(DWORD*)0x004e9bb8;
 	if (player != 0)//player
 	{
-		float playerX = (*(float*)((DWORD)player + 0x618));
+		float playerX = GET_VAL_FINAL_SAFE(float,0x004e9bb8,0x618);
 		float playerY = (*(float*)((DWORD)player + 0x61C));
 		float printX = TransFromStageToScreen(playerX, playerY).x;
 		float printY = TransFromStageToScreen(playerX, playerY).y;
@@ -91,7 +92,8 @@ void DrawPF()
 			DWORD flag = *(DWORD*)(ptr + 0x526c);
 			float x, y;
 			x = *(float*)(ptr + 0x1250);
-			y = *(float*)(ptr + 0x1254);
+			x= GET_VAL_FINAL_SAFE(float,0x004E9A80,0x180,0x4,0,0x1250);
+			y = GET_VAL_FINAL_SAFE(float,0x004E9A80, 0x180, 0x4,0, 0x1254);
 			ShapeRectangle rect(x, y, 20, 20);
 			rect.Draw();
 		}

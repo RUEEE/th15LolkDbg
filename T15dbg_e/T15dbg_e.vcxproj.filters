@@ -19,6 +19,9 @@
     <Filter Include="other\imgui">
       <UniqueIdentifier>{b8748226-3b50-4a0f-8eb5-84af4f71bbe2}</UniqueIdentifier>
     </Filter>
+    <Filter Include="guis">
+      <UniqueIdentifier>{69fe7fa9-497e-4c95-b3d2-0a238e2f648b}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="framework.h">
@@ -66,6 +69,9 @@
     <ClInclude Include="handle.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="addrViewer.h">
+      <Filter>guis</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -106,6 +112,9 @@
     </ClCompile>
     <ClCompile Include="handle.cpp">
       <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="addrViewer.cpp">
+      <Filter>guis</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

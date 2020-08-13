@@ -1,7 +1,8 @@
 #include "pch.h"
 #include "imguiClass.h"
-#include "handle.h"
 #include "DrawShape.h"
+#include "addrViewer.h"
+
 using namespace ImGui;
 extern float scale;
 extern bool is_in_game;
@@ -114,8 +115,13 @@ static void ShowOverlay()
         Checkbox(u8"bulletSelectBox", &BulletHandle::is_SelectBox_visible);
     }
     ImGui::Separator();
+
+    static bool is_addr_viewer_open = true;
     if (ImGui::CollapsingHeader("Others"))
     {
+        if(Button("Address Viewer"))
+            is_addr_viewer_open=!is_addr_viewer_open;
+        
         if (ImGui::IsMousePosValid())
             ImGui::Text("Mouse Position: (%.1f,%.1f)", io.MousePos.x, io.MousePos.y);
         else
@@ -146,7 +152,13 @@ static void ShowOverlay()
             TreePop();
         }
     }
+
+    if(is_addr_viewer_open)
+        AddrViewer(&is_addr_viewer_open);
+
     ImGui::End();
+
+    
 }
 
 void DefaultWindow()

@@ -157,6 +157,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="addrViewer.h" />
     <ClInclude Include="DrawShape.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="handle.h" />
@@ -174,6 +175,7 @@
     <ClInclude Include="Process.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="addrViewer.cpp" />
     <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="DrawShape.cpp" />
     <ClCompile Include="handle.cpp" />

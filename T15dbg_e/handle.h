@@ -4,6 +4,44 @@
 #include <vector>
 #include "DrawShape.h"
 
+
+#define GET_VAL_FINAL_SAFE(T,...) (GetPtFinalSafe(__VA_ARGS__)!=nullptr?(*(T*)GetPtFinalSafe(__VA_ARGS__)) : (T)0)
+#define GET_VAL_FINAL_UNSAFE(T,...) (GetPtFinalUnSafe(__VA_ARGS__)!=nullptr?(*(T*)GetPtFinalUnSafe(__VA_ARGS__)) : (T)0)
+//only to get something type such as int,float,double,...
+extern HANDLE current_process;
+
+template<typename Off,typename... Offs>
+void* GetPtFinalSafe(DWORD base,Off offs1, Offs... offs)
+{
+	void* ptr;
+	SIZE_T g;
+	if (!(ReadProcessMemory(current_process,(LPCVOID)base,&ptr,0x4,&g)))
+	{
+		//IsBadReadPtr((void*)base, 0x4) || IsBadReadPtr(ptr = (void*)(*(DWORD*)base + (DWORD)offs1), 0x4)
+		return nullptr;
+	}
+	ptr=(void*)((DWORD)ptr + offs1);
+
+	if constexpr (sizeof...(offs) > 0) {
+		ptr = GetPtFinalSafe((DWORD)ptr,offs...);
+	}
+	return ptr;
+}
+
+template<typename Off, typename... Offs>
+void* GetPtFinalUnSafe(DWORD base, Off offs1, Offs... offs)
+{
+	void* ptr;
+	ptr = (void*)(*(DWORD*)base + (DWORD)offs1);
+	if constexpr (sizeof...(offs) > 0)
+		ptr = GetPtFinalUnSafe((DWORD)ptr, offs...);
+	return ptr;
+}
+
+bool GetPtFinalSafe(DWORD base,const std::vector<DWORD>& offs,std::vector<DWORD>& ptrs);
+
+
+
 class BulletHandle
 {
 public:
@@ -31,6 +69,14 @@ public:
 class GameGeneral
 {
 public:
+	static DWORD playerBase;
+
+	static DWORD bulletBase;
+	static DWORD bulletOffset1;
+
+	static DWORD enemyBase;
+	static DWORD enemyOffset1;
+//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 	static unsigned int* score;
 	static unsigned int* hiScore;
 	static unsigned int* life;

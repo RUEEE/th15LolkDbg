@@ -1,7 +1,42 @@
 #include "pch.h"
 #include "handle.h"
-
+bool GetPtFinalSafe(DWORD base, const std::vector<DWORD>& offs, std::vector<DWORD>& ptrs)
+{
+	SIZE_T g;
+	void* ptr;
+	ptrs.clear();
+	if (offs.size() < 1) {
+		ptrs.push_back(base);
+		return (void*)base;
+	}
+	if (!ReadProcessMemory(current_process, (LPCVOID)base, &ptr, 0x4, &g))
+	{
+		return false;
+	}
+	ptrs.push_back((DWORD)ptr);
+	for (int i = 0; i < offs.size() - 1; i++)
+	{
+		ptr = (void*)((DWORD)ptr + offs[i]);
+		if (!ReadProcessMemory(current_process, (LPCVOID)ptr, &ptr, 0x4, &g))
+		{
+			return false;
+		}
+		ptrs.push_back((DWORD)ptr);
+	}
+	ptr = (void*)((DWORD)ptr + offs[offs.size() - 1]);
+	ptrs.push_back((DWORD)ptr);
+	return true;
+}
 //general
+DWORD GameGeneral::playerBase										= (DWORD)0x004E9BB8;
+
+DWORD GameGeneral::bulletBase										= (DWORD)0x004E9A6C;
+DWORD GameGeneral::bulletOffset1									= (DWORD)0x6C;
+																	
+DWORD GameGeneral::enemyBase										= (DWORD)0x004E9A80;
+DWORD GameGeneral::enemyOffset1										= (DWORD)0x180;
+
+
 unsigned int* GameGeneral::score									= (unsigned int*)0x004E740C;
 unsigned int* GameGeneral::hiScore									= (unsigned int*)0x004E75BC;
 unsigned int* GameGeneral::life										= (unsigned int*)0x004E7450;
@@ -54,25 +89,29 @@ int PlayerHandle::shoot_rank										= 0;
 
 void GameGeneral::GetKeyPress()
 {
-GameGeneral::is_pressed_Z		= *GameGeneral::keyPressed & 0x1;
-GameGeneral::is_pressed_X		= *GameGeneral::keyPressed & 0x2;
-GameGeneral::is_pressed_C		= *GameGeneral::keyPressed & 0x800;
-GameGeneral::is_pressed_Shift	= *GameGeneral::keyPressed & 0x8;
-GameGeneral::is_pressed_Up		= *GameGeneral::keyPressed & 0x10;
-GameGeneral::is_pressed_Down	= *GameGeneral::keyPressed & 0x20;
-GameGeneral::is_pressed_Left	= *GameGeneral::keyPressed & 0x40;
-GameGeneral::is_pressed_Right	= *GameGeneral::keyPressed & 0x80;
-
-GameGeneral::is_pressed_GZ		= *GameGeneral::keyPressedG & 0x1;
-GameGeneral::is_pressed_GX		= *GameGeneral::keyPressedG & 0x2;
-GameGeneral::is_pressed_GC		= *GameGeneral::keyPressedG & 0x800;
-GameGeneral::is_pressed_GShift	= *GameGeneral::keyPressedG & 0x8;
-GameGeneral::is_pressed_GUp		= *GameGeneral::keyPressedG & 0x10;
-GameGeneral::is_pressed_GDown	= *GameGeneral::keyPressedG & 0x20;
-GameGeneral::is_pressed_GLeft	= *GameGeneral::keyPressedG & 0x40;
-GameGeneral::is_pressed_GRight	= *GameGeneral::keyPressedG & 0x80;
+	GameGeneral::is_pressed_Z		= *GameGeneral::keyPressed & 0x1;
+	GameGeneral::is_pressed_X		= *GameGeneral::keyPressed & 0x2;
+	GameGeneral::is_pressed_C		= *GameGeneral::keyPressed & 0x800;
+	GameGeneral::is_pressed_Shift	= *GameGeneral::keyPressed & 0x8;
+	GameGeneral::is_pressed_Up		= *GameGeneral::keyPressed & 0x10;
+	GameGeneral::is_pressed_Down	= *GameGeneral::keyPressed & 0x20;
+	GameGeneral::is_pressed_Left	= *GameGeneral::keyPressed & 0x40;
+	GameGeneral::is_pressed_Right	= *GameGeneral::keyPressed & 0x80;
+	
+	GameGeneral::is_pressed_GZ		= *GameGeneral::keyPressedG & 0x1;
+	GameGeneral::is_pressed_GX		= *GameGeneral::keyPressedG & 0x2;
+	GameGeneral::is_pressed_GC		= *GameGeneral::keyPressedG & 0x800;
+	GameGeneral::is_pressed_GShift	= *GameGeneral::keyPressedG & 0x8;
+	GameGeneral::is_pressed_GUp		= *GameGeneral::keyPressedG & 0x10;
+	GameGeneral::is_pressed_GDown	= *GameGeneral::keyPressedG & 0x20;
+	GameGeneral::is_pressed_GLeft	= *GameGeneral::keyPressedG & 0x40;
+	GameGeneral::is_pressed_GRight	= *GameGeneral::keyPressedG & 0x80;
 }
+//none asm
 
+
+
+//the asms
 void GameGeneral::PowerChanged()
 {
 	__asm

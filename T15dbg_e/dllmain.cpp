@@ -7,7 +7,7 @@ void* createDeviceAddr = NULL;
 BYTE endSceneOldCode[sizeof(JmpCode)];
 BYTE createDeviceOldCode[sizeof(JmpCode)];
 
-
+extern HANDLE current_process;
 extern HWND windowHwnd;
 extern ID3DXFont* g_font;
 extern float windowWidth;
@@ -146,7 +146,7 @@ BOOL APIENTRY DllMain(HMODULE hModule,
 	case DLL_PROCESS_ATTACH:
 		// 取当前线程句柄
 		HANDLE curThread;
-		if (!DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &curThread, SYNCHRONIZE, FALSE, 0))
+		if (!DuplicateHandle(current_process=GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &curThread, SYNCHRONIZE, FALSE, 0))
 			return FALSE;
 		// DllMain中不能使用COM组件，所以要在另一个线程初始化
 		CloseHandle(CreateThread(NULL, 0, initHookThread, curThread, 0, NULL));
