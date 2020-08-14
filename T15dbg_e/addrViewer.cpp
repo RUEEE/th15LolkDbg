@@ -3,12 +3,20 @@
 #include "DrawShape.h"
 #include <tuple>
 #include <sstream>
+#include <algorithm>
 
 using namespace ImGui;
 extern float scale;
 extern HANDLE current_process;
 
 const char* Address::typeStr[] = { "byte","2 bytes","4 bytes","8 bytes","float","double","string","vec2","vec3","vec4" };
+
+const char* Address::GetDescriptionWider()
+{
+	static char ch[300];
+	sprintf_s(ch,300,"%d: %s###A~%x",count,description.c_str(),ID);
+	return ch;
+}
 
 void Address::GetPointer()
 {
@@ -87,18 +95,13 @@ void Address::GetValueStr(char* str,int bufsz=255)
 	valueStr=std::string(str);
 }
 
-const char* Address::GetDescription()
-{
-	std::stringstream ss;
-	ss<<count+1<<": "<<this->description;
-	descriptionTotal=std::string(ss.str());
-	return descriptionTotal.c_str();
-}
-
+unsigned int Address::cnt = 0;
 Address::Address(int c=0):base(0), is_bad_addr(1), offs(), offVal(), type(AD_DWORD), typeAdd(0)
 {
 	count=c;
 	description="no description";
+	cnt++;
+	ID=cnt;
 }
 
 void Address:: SetBuffer(int i)
@@ -129,7 +132,7 @@ void SingleAddrViewer(Address& addr)
 		SameLine();
 		Text("=%s",valbuf);
 	}
-	Separator();
+	ImGui::Separator();
 	//description
 	{
 		char des[255];
@@ -137,7 +140,7 @@ void SingleAddrViewer(Address& addr)
 		ImGui::InputText("Description", des, 255);
 		addr.description = std::string(des);
 	}
-	Separator();
+	ImGui::Separator();
 	//type
 	{
 		if (ImGui::Combo("ValueType", (int*)&(addr.type), Address::typeStr, IM_ARRAYSIZE(Address::typeStr)))
@@ -156,10 +159,8 @@ void SingleAddrViewer(Address& addr)
 			ImGui::Text(" ");
 		}
 	}
-	Separator();
 	//pointer check
 	Checkbox("pointer", &is_pointer);
-	Separator();
 	if (is_pointer)
 	{
 		if(addr.offs.size()==0)
@@ -173,16 +174,16 @@ void SingleAddrViewer(Address& addr)
 				if (Button("<"))
 					*offs -= 4;
 				SameLine();
-				if (Button(">"))
-					*offs += 4;
-				SameLine();
 				char lastOfsBuf[10];
 				sprintf_s(lastOfsBuf, 10, *offs < 0 ? "-%X" : "%X", * offs < 0 ? (-*offs) : *offs);
-				char name[10];
-				sprintf_s(name, 10, "offs %d:", i + 1);
+				char name[15];
+				sprintf_s(name, 15, "###offs%4d", i + 1);
 				ImGui::SetNextItemWidth(80);
 				if (InputText(name, lastOfsBuf, 10))
 					if (!sscanf_s(lastOfsBuf, "%x", offs))offs = 0;//auto changes
+				SameLine();
+				if (Button(">"))
+					*offs += 4;
 				SameLine();
 				if (addr.bad_count+2 <= i)
 					Text("????????+%X=????????", *offs, addr.offVal[i + 1]);
@@ -197,16 +198,16 @@ void SingleAddrViewer(Address& addr)
 				if (Button("<"))
 					*offs -= 4;
 				SameLine();
-				if (Button(">"))
-					*offs += 4;
-				SameLine();
 				char OfsBuf[10];
 				sprintf_s(OfsBuf, 10, *offs < 0 ? "-%X" : "%X", * offs < 0 ? (-*offs) : *offs);
-				char name[10];
-				sprintf_s(name, 10, "offs %d:", i + 1);
+				char name[15];
+				sprintf_s(name, 15, "###offs%4d", i + 1);
 				ImGui::SetNextItemWidth(80);
 				if (InputText(name, OfsBuf, 10))
 					if (!sscanf_s(OfsBuf, "%x", offs))offs = 0;//auto changes
+				SameLine();
+				if (Button(">"))
+					*offs += 4;
 				SameLine();
 				if (addr.bad_count - 1 <= i)
 					Text("[????????+%X]=????????", *offs, addr.offVal[i + 1]);
@@ -263,13 +264,29 @@ void AddrViewer(bool* p_open)
 	{
 		ImGui::BeginChild("left pane", ImVec2(400, 0), true,ImGuiWindowFlags_HorizontalScrollbar);
 		Columns(3);
-		int i=0;
+		int sort = 0;//0:no sort,1:by des(u),2:by addr(u),3,4 the similar
+
+		Text("description");
+		if (ImGui::IsItemClicked(0))
+			sort=1;
+		else if (ImGui::IsItemClicked(1))
+			sort = 3;
 		totalSelected=0;
+		int dragN=0;
 		for (auto x=addrs.begin();x!=addrs.end();x++)
 		{
-			x->first.count=i;
-			if (ImGui::Selectable(x->first.GetDescription(), x->second, ImGuiSelectableFlags_SpanAllColumns))
+			ImGui::Selectable(x->first.GetDescriptionWider(), x->second, ImGuiSelectableFlags_SpanAllColumns);
+			//select and drag to order
+			if (x->second && ImGui::IsItemActive() && !ImGui::IsItemHovered())
 			{
+				dragN = ImGui::GetMouseDragDelta(0).y/ImGui::GetItemRectSize().y;//in order to avoid the multi select 
+				
+			}
+			//end drag
+
+			if (ImGui::IsItemDeactivated())
+			{
+				x->second=!x->second;
 				lastSecondSelected=lastSelected;
 				lastSelected = x;
 				if (ImGui::GetIO().KeyShift && lastSecondSelected != addrs.end()){
@@ -291,15 +308,20 @@ void AddrViewer(bool* p_open)
 					x->second = true;
 				}
 			}
-			i++;
 		}
 		NextColumn();
+		Text("address");
+		if (ImGui::IsItemClicked(0))
+			sort = 2;
+		else if(ImGui::IsItemClicked(1))
+			sort=4;
 		for (auto& x : addrs)
 		{
 			x.first.GetPointer();
 			Text("%#08X",x.first.offVal[x.first.offVal.size()-1]);
 		}
 		NextColumn();
+		Text("value");
 		for (auto& x : addrs)
 		{
 			char ch[255];
@@ -309,6 +331,86 @@ void AddrViewer(bool* p_open)
 				totalSelected++;
 		}
 		
+		bool is_reOrdered=false;
+		if (dragN > 0)//drag down
+		{
+			is_reOrdered=true;
+			ImGui::ResetMouseDragDelta();
+			for (int i = 0; i < dragN; i++)
+			{
+				auto ls = addrs.end()--;
+				for (auto iter = addrs.begin(); iter != ls; iter++)
+				{
+					if (iter->second)
+					{
+						auto itNext = std::find_if(iter, addrs.end(), [=](auto i)->bool {return !i.second; });
+						if (itNext != addrs.end())
+						{
+							auto itNN = itNext;
+							itNN++;
+							addrs.splice(itNN, addrs, iter, itNext);
+							if (itNN != addrs.end())
+								iter = itNN;
+							else break;
+						}
+					}
+				}
+			}
+		}
+		else if (dragN < 0)//drag up
+		{
+			is_reOrdered = true;
+			dragN=-dragN;
+			ImGui::ResetMouseDragDelta();
+			for (int i = 0; i < dragN; i++)
+			{
+				for (auto iter = addrs.begin(); iter != addrs.end(); iter++)
+				{
+					if (iter->second)
+					{
+						auto itNext = std::find_if(iter, addrs.end(), [=](auto i)->bool {return !i.second; });
+						if (iter != addrs.begin())
+						{
+							auto itNN = iter;
+							itNN--;
+							addrs.splice(itNN, addrs, iter, itNext);
+						}
+						if(itNext!=addrs.end())
+							iter = itNext;
+						else break;
+					}
+				}
+			}
+		}
+		switch (sort)
+		{
+			case 1:is_reOrdered = true;
+			addrs.sort(
+				[=](const std::pair<Address, bool>&A, const  std::pair<Address, bool>& B)->bool {
+					return A.first.description > B.first.description; });break;
+			case 2:is_reOrdered = true;
+			addrs.sort(
+				[=](const std::pair<Address, bool>&A, const  std::pair<Address, bool>& B)->bool {
+					return A.first.offVal[A.first.offVal.size()-1] > B.first.offVal[B.first.offVal.size() - 1]; }); break;
+			case 3:is_reOrdered = true;
+			addrs.sort(
+				[=](const std::pair<Address, bool>&A, const  std::pair<Address, bool>& B)->bool {
+					return A.first.description < B.first.description; }); break;
+			case 4:is_reOrdered = true;
+			addrs.sort(
+				[=](const std::pair<Address, bool>&A,const std::pair<Address, bool>& B)->bool {
+					return A.first.offVal[A.first.offVal.size() - 1] < B.first.offVal[B.first.offVal.size() - 1]; }); break;
+			default:break;
+		}
+
+		if (is_reOrdered)
+		{
+			int i = 0;
+			for (auto& x : addrs)
+			{
+				x.first.count = i++;
+			}
+		}
 		Columns(1);
 		ImGui::EndChild();
 	}
@@ -317,7 +419,7 @@ void AddrViewer(bool* p_open)
 	// Right
 	{
 		ImGui::BeginGroup();
-		ImGui::BeginChild("item view", ImVec2(0, -ImGui::GetFrameHeightWithSpacing()*16)); // Leave room for 1 line below us
+		ImGui::BeginChild("item view", ImVec2(0, -ImGui::GetFrameHeightWithSpacing()*16),ImGuiWindowFlags_AlwaysAutoResize); // Leave room for 1 line below us
 		if(lastSelected==addrs.end())
 			ImGui::Text("haven't select a address");
 		else
@@ -326,11 +428,11 @@ void AddrViewer(bool* p_open)
 			ImGui::Text("Selected: %8d   Last2: %8d,%8d", totalSelected,
 				lastSelected->first.count + 1, lastSecondSelected == addrs.end()?-1:lastSecondSelected->first.count+1);
 			ImGui::Separator();
-			if (ImGui::BeginTabBar("AddressViewer_Tabs", ImGuiTabBarFlags_None))
+			if (ImGui::BeginTabBar("AddressTab", ImGuiTabBarFlags_None))
 			{
 				if (ImGui::BeginTabItem("Description"))
 				{
-					ImGui::TextWrapped("%s",addr.description.c_str());
+					ImGui::TextWrapped("%s", addr.description.c_str());
 					Text("val: %s", addr.GetValueStrUnsafe());
 					ImGui::Separator();
 					if(ImGui::Combo("ValueType", (int*)&(addr.type),Address::typeStr,IM_ARRAYSIZE(Address::typeStr)))
@@ -348,7 +450,7 @@ void AddrViewer(bool* p_open)
 						default:
 							ImGui::Text(" ");
 					}
-					Separator();
+					ImGui::Separator();
 					ImGui::EndTabItem();
 				}
 				if (ImGui::BeginTabItem("Details"))
@@ -361,15 +463,12 @@ void AddrViewer(bool* p_open)
 		}
 		ImGui::EndChild();
 		
-
-		
-		
 	}
 
 	//bottom
 	{
 		ImGui::BeginChild("plot view", ImVec2(0, -ImGui::GetFrameHeightWithSpacing())); // Leave room for 1 line below us
-		Separator();
+		ImGui::Separator();
 
 		static std::vector<ImVec2> scrolling{};
 		static std::vector<std::string> tabNames={};
@@ -378,45 +477,87 @@ void AddrViewer(bool* p_open)
 		static std::vector<std::pair<ImVec2,ImVec2>> limCood={};//(minX,minY) (maxX,maxY)
 		static std::vector<std::pair<Address,Address>> coodDes={};//(x,y) 
 		static bool opt_enable_context_menu = true;
+		static int nowSelectTab=-1;
 		//>>>
 		if (ImGui::Button("Add graph"))
 			OpenPopup("add new graph");
-		ImVec2 center(ImGui::GetIO().DisplaySize.x * 0.5f, ImGui::GetIO().DisplaySize.y * 0.5f);
-		ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-		if (ImGui::BeginPopupModal("add new graph", NULL, ImGuiWindowFlags_AlwaysAutoResize))
 		{
-			if (lastSelected == addrs.end() || lastSecondSelected == addrs.end())
+			ImVec2 center(ImGui::GetIO().DisplaySize.x * 0.5f, ImGui::GetIO().DisplaySize.y * 0.5f);
+			ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+			if (ImGui::BeginPopupModal("add new graph", NULL, ImGuiWindowFlags_AlwaysAutoResize))
 			{
-				Text("please select two int or float or double addresses to generate p(x,y)");
-				if (Button("cancel"))
-					ImGui::CloseCurrentPopup();
-			}else{
-				static char p[40]="Graph";
-				InputText("name:",p,40);
-				SameLine();
-				Text("%s@n",p);
-				if (ImGui::Button("apply"))
+				if (lastSelected == addrs.end() || lastSecondSelected == addrs.end()
+				|| lastSecondSelected->first.type == Address::AD_STRING ||
+					lastSelected->first.type == Address::AD_STRING)
 				{
-					scrolling.push_back(ImVec2(0,0));
-					char label[50];
-					sprintf_s(label,50,"%s@%d",p,tabNames.size()+1);
-					tabNames.push_back(std::string(label));
-					all_points.push_back(std::list<ImVec2>());
-					all_scales.push_back(ImVec2(1,1));
-					limCood.push_back(std::make_pair(ImVec2(0,0),ImVec2(1,1)));
-					coodDes.push_back(std::make_pair(lastSecondSelected->first,lastSelected->first));
-					ImGui::CloseCurrentPopup();
+					Text("please select two int/float/double/vector addresses to generate p(x,y)");
+					if (Button("cancel"))
+						ImGui::CloseCurrentPopup();
 				}
+				else {
+					static int counter=0;
+					static char p[40] = "Graph";
+					Text("the addr selected:\nX=%s(%d)\nY=%s(%d)", 
+					lastSecondSelected->first.description.c_str(),lastSecondSelected->first.count,
+						lastSelected->first.description.c_str(), lastSelected->first.count);
+					InputText("###Graph_name", p, 40);
+					SameLine();
+					if (ImGui::Button("apply"))
+					{
+						scrolling.push_back(ImVec2(0, 0));
+						char label[50];
+						sprintf_s(label, 50, "%s###%d", p,counter); counter++;
+						tabNames.push_back(std::string(label));
+						all_points.push_back(std::list<ImVec2>());
+						all_scales.push_back(ImVec2(1, 1));
+						limCood.push_back(std::make_pair(ImVec2(0, 0), ImVec2(1, 1)));
+						coodDes.push_back(std::make_pair(lastSecondSelected->first, lastSelected->first));
+						ImGui::CloseCurrentPopup();
+					}
+				}
+				ImGui::EndPopup();
 			}
-			ImGui::EndPopup();
+
 		}
 		//>>>
-		if (ImGui::BeginTabBar("##TabBar"))
+		SameLine();
+		if (ImGui::Button("Remove graph"))
+			OpenPopup("Remove graph");
+		{
+			ImVec2 center(ImGui::GetIO().DisplaySize.x * 0.5f, ImGui::GetIO().DisplaySize.y * 0.5f);
+			ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+			if (ImGui::BeginPopupModal("Remove graph", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+			{
+				if (nowSelectTab==-1)
+					ImGui::CloseCurrentPopup();
+				else{
+					static char p[40] = "Graph";
+					Text("sure to delete this graph: %s",tabNames[nowSelectTab].c_str());
+					if (ImGui::Button("apply"))
+					{
+						scrolling.erase(scrolling.begin()+nowSelectTab);
+						tabNames.erase(tabNames.begin()+nowSelectTab);
+						all_points.erase(all_points.begin()+nowSelectTab);
+						all_scales.erase(all_scales.begin()+nowSelectTab);
+						limCood.erase(limCood.begin()+nowSelectTab);
+						coodDes.erase(coodDes.begin()+nowSelectTab);
+						nowSelectTab=-1;
+						ImGui::CloseCurrentPopup();
+					}
+				}
+				ImGui::EndPopup();
+			}
+		}
+		
+		//>>>
+		nowSelectTab=-1;
+		if (ImGui::BeginTabBar("GrBar", ImGuiTabBarFlags_Reorderable))
 		{
 			for (int i = 0; i < tabNames.size(); i++)
 			{
 				if (BeginTabItem(tabNames[i].c_str(),0))
 				{
+					nowSelectTab=i;
 					ImVec2 canvas_p0 = ImGui::GetCursorScreenPos();      // ImDrawList API uses screen coordinates!
 					ImVec2 canvas_sz = ImGui::GetContentRegionAvail();   // Resize canvas to what's available
 					if (canvas_sz.x < 50.0f) canvas_sz.x = 50.0f;
@@ -481,16 +622,35 @@ void AddrViewer(bool* p_open)
 					{
 						limCood[i] = std::make_pair(*j,*j);
 						auto p = j; p++;
+
+						auto mouse=GetMousePos();
+						bool is_drawed_tip=false;
 						for (; p != all_points[i].end(); j++, p++)
 						{
-							draw_list->AddLine
-							(ImVec2(origin.x + j->x * all_scales[i].x, origin.y + j->y * all_scales[i].y),
-								ImVec2(origin.x + p->x * all_scales[i].x, origin.y + p->y * all_scales[i].y),
-								IM_COL32(250, 140, 177, 255), 2.0f);
-							if (p->x < limCood[i].first.x)limCood[i].first.x = p->x;
-							if (p->x > limCood[i].second.x)limCood[i].second.x = p->x;
-							if (p->y < limCood[i].first.y)limCood[i].first.y = p->y;
-							if (p->y > limCood[i].second.y)limCood[i].second.y = p->y;
+							ImVec2 pt1(origin.x + j->x * all_scales[i].x, origin.y + j->y * all_scales[i].y)
+							,pt2(origin.x + p->x * all_scales[i].x, origin.y + p->y * all_scales[i].y);
+							
+							if(!is_drawed_tip)
+								if (abs(mouse.x-pt1.x)<=5 && abs(mouse.y-pt1.y)<=5)
+								{
+									BeginTooltip();
+									Text("(%5.3g,%5.3g)",j->x,j->y);
+									EndTooltip();
+									is_drawed_tip=true;
+								}
+								else if (abs(mouse.x - pt2.x) <= 5 && abs(mouse.y - pt2.y) <= 5)
+								{
+									BeginTooltip();
+									Text("(%5.3g,%5.3g)", p->x, p->y);
+									EndTooltip();
+									is_drawed_tip = true;
+								}
+								draw_list->AddLine
+								(pt1,pt2,IM_COL32(250, 140, 177, 255), 2.0f);
+								if (p->x < limCood[i].first.x)limCood[i].first.x = p->x;
+								if (p->x > limCood[i].second.x)limCood[i].second.x = p->x;
+								if (p->y < limCood[i].first.y)limCood[i].first.y = p->y;
+								if (p->y > limCood[i].second.y)limCood[i].second.y = p->y;
 						}
 						draw_list->AddCircle(ImVec2(origin.x + j->x * all_scales[i].x,origin.y + j->y * all_scales[i].y),5.0f,
 						IM_COL32(191,166,255, 255),8,3.00f);
@@ -604,16 +764,34 @@ void AddrViewer(bool* p_open)
 			ImGui::EndTabBar();
 		}
 		
-
-
-
 		ImGui::EndChild();
 		{
-			if (ImGui::Button("Add address(A)") ||
-				(ImGui::IsKeyPressed('A') && IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)))
+			if (ImGui::Button("Add addressX"))
+			{
+				Address a(0);
+				a.base=0x004e9bb8;
+				a.type=a.AD_FLOAT;
+				a.offs.push_back(0x618);
+				a.description=std::string("playerX");
+				addrs.push_back(std::make_pair(a,false));
+
+				a.count=1;
+				a.GetID();
+				a.offs[0]=0x61C;
+				a.description = std::string("playerY");
+				addrs.push_back(std::make_pair(a, false));
+
+				a.GetID();
+				a.count=2;
+				a.type=a.AD_VECTOR2;
+				a.offs[0]=0x618;
+				a.description = std::string("player");
+				addrs.push_back(std::make_pair(a, false));
+			}
+			if (ImGui::Button("Add address"))
 				OpenPopup("add new address");
-			ImVec2 center(ImGui::GetIO().DisplaySize.x * 0.5f, ImGui::GetIO().DisplaySize.y * 0.5f);
-			ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+			//ImVec2 center(ImGui::GetIO().DisplaySize.x * 0.5f, ImGui::GetIO().DisplaySize.y * 0.5f);
+			//ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
 			if (ImGui::BeginPopupModal("add new address", NULL, ImGuiWindowFlags_AlwaysAutoResize))
 			{
 				static Address addr1(0);
@@ -628,7 +806,7 @@ void AddrViewer(bool* p_open)
 				}
 				Address& adr = addrs.back().first;
 				SingleAddrViewer(adr);
-				if (ImGui::Button("apply"))
+				if (ImGui::Button("apply") || ImGui::IsKeyDown(ImGui::GetKeyIndex(ImGuiKey_Enter)))
 				{
 					editing = 0;
 					ImGui::CloseCurrentPopup();
@@ -652,6 +830,6 @@ void AddrViewer(bool* p_open)
 		}
 		ImGui::EndGroup();
 	}
-	End();
+	ImGui::End();
 }
 
