@@ -506,7 +506,7 @@ void AddrViewer(bool* p_open)
 					{
 						scrolling.push_back(ImVec2(0, 0));
 						char label[50];
-						sprintf_s(label, 50, "%s###%d", p,counter); counter++;
+						sprintf_s(label,50, "%s###%d", p,counter); counter++;
 						tabNames.push_back(std::string(label));
 						all_points.push_back(std::list<ImVec2>());
 						all_scales.push_back(ImVec2(1, 1));

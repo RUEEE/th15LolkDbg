@@ -33,5 +33,5 @@ public:
 	const char* GetValueStrUnsafe(){return valueStr.c_str();}
 	Address(int c);
 	void SetBuffer(int i);
-	void GetID(){cnt++;ID=cnt;}//to copy/assign
+	void GetID(){cnt++; ID=cnt;}//to copy/assign
 };
