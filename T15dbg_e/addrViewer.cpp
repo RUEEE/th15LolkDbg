@@ -1,13 +1,11 @@
 #include "pch.h"
 #include "addrViewer.h"
 #include "DrawShape.h"
-#include <tuple>
-#include <sstream>
-#include <algorithm>
 
-using namespace ImGui;
+
 extern float scale;
 extern HANDLE current_process;
+using namespace ImGui;
 
 const char* Address::typeStr[] = { "byte","2 bytes","4 bytes","8 bytes","float","double","string","vec2","vec3","vec4" };
 
@@ -111,6 +109,471 @@ void Address:: SetBuffer(int i)
 	typeAdd = i;
 }
 
+void Graph_PointY::PushPoint(float x)
+{
+	bool is_x_filled=false;;
+	this->yAddr.GetPointer();
+	if (!yAddr.is_bad_addr)
+	{
+		if (ptX.size() < this->length)
+		{
+			this->ptX.push_back(x);
+		}else {
+			ptX[ptBegin] = x;//delete the first point
+			is_x_filled = true;
+			//the ptBegin's adjust is in Y
+		}
+		float f1;
+		#define GET_Y(T) T Y;yAddr.GetValueUnSafe(&Y);f1=(float)Y;goto SET_Y;
+		switch (yAddr.type)
+		{
+		case Address::AD_BYTE:	 	{GET_Y(BYTE)}
+		case Address::AD_WORD:	 	{GET_Y(WORD)}
+		case Address::AD_DWORD:	 	{GET_Y(int)}
+		case Address::AD_QWORD:	 	{GET_Y(long long int)}
+		case Address::AD_FLOAT:	 	{GET_Y(float)}
+		case Address::AD_DOUBLE: 	{GET_Y(double)}
+		SET_Y:
+			 if (!is_x_filled)
+			 {ptY.push_back(f1);}
+			 else{
+				ptY[ptBegin]=f1;//delete the first point
+				ptBegin++;
+				if(ptBegin>=ptX.size())ptBegin=0;
+			 }break;
+		case Address::AD_VECTOR2:	{
+			D3DXVECTOR2 v; yAddr.GetValueUnSafe(&v);
+			if (!is_x_filled)
+				{ptY.push_back(v.x); ptY.push_back(v.y);}
+			else {
+					ptY[ptBegin*2] = v.x;//delete the first point
+					ptY[ptBegin*2+1]=v.y;
+					ptBegin++;
+					if (ptBegin >= ptX.size())ptBegin = 0;
+			}break;
+		}
+		case Address::AD_VECTOR3:	{
+			D3DXVECTOR3 v; yAddr.GetValueUnSafe(&v);
+			if (!is_x_filled)
+			{ptY.push_back(v.x); ptY.push_back(v.y); ptY.push_back(v.z);}else {
+				ptY[ptBegin * 3] = v.x;//delete the first point
+				ptY[ptBegin * 3 + 1] = v.y;
+				ptY[ptBegin * 3 + 2] = v.z;
+				ptBegin++;
+				if (ptBegin >= ptX.size())ptBegin = 0;
+				}break;
+			}
+		case Address::AD_VECTOR4: {
+			D3DXVECTOR4 v; yAddr.GetValueUnSafe(&v);
+				if (!is_x_filled)
+				{
+					ptY.push_back(v.x); ptY.push_back(v.y); ptY.push_back(v.z); ptY.push_back(v.w);
+				}
+				else {
+					ptY[ptBegin * 4] = v.x;//delete the first point
+					ptY[ptBegin * 4 + 1] = v.y;
+					ptY[ptBegin * 4 + 2] = v.z;
+					ptY[ptBegin * 4 + 3] = v.w;
+					ptBegin++;
+					if (ptBegin >= ptX.size())ptBegin = 0;
+				}break;
+			}
+		default:break;
+		}
+		#undef GET_Y(T) T Y;yAddr.GetValueUnSafe(&Y);this->ptY.push_back((float)Y);break;
+		
+	}
+}
+
+void Graph_PointY::DrawPoints_Tip_Single(float x1, float y1, float x2, float y2, ImDrawList* drawList, GraphA* graph,DWORD color)
+{
+	float x1u,y1u,x2u,y2u;
+	x1u = (x1 + graph->translationSrc.x) * graph->scaleSrc.x + graph->translationDst.x + graph->scrollingDst.x;
+	x2u = (x2 + graph->translationSrc.x) * graph->scaleSrc.x + graph->translationDst.x + graph->scrollingDst.x;
+	y1u = (y1 + graph->translationSrc.y) * graph->scaleSrc.y + graph->translationDst.y + graph->scrollingDst.y;
+	y2u = (y2 + graph->translationSrc.y) * graph->scaleSrc.y + graph->translationDst.y + graph->scrollingDst.y;
+	drawList->AddLine(ImVec2(x1u,y1u),ImVec2(x2u,y2u),color,3.0f);
+	if (!graph->is_tipped)
+	{
+		ImVec2 msp=ImGui::GetMousePos();
+		if (abs(msp.x - x1u) <= 4 && abs(msp.y - y1u) <= 4)
+		{
+			ImGui::BeginTooltip();
+			Text("x:%6.4g\ny:%6.4g",x1,y1);
+			ImGui::EndTooltip();
+			graph->is_tipped = true;
+		}
+		else if (abs(msp.x - x2u) <= 4 && abs(msp.y - y2u) <= 4)
+		{
+			ImGui::BeginTooltip();
+			Text("x:%6.4g\ny:%6.4g", x2, y2);
+			ImGui::EndTooltip();
+			graph->is_tipped = true;
+		}
+	}
+	if (x1 < graph->minPoint.x)
+		graph->minPoint.x = x1;
+	if (x1 > graph->maxPoint.x)
+		graph->maxPoint.x = x1;
+	if (y1 < graph->minPoint.y)
+		graph->minPoint.y = y1;
+	if (y1 > graph->maxPoint.y)
+		graph->maxPoint.y = y1;
+}
+
+void Graph_PointY::DrawCircle(float x, float y, DWORD col, ImDrawList* dw, GraphA* graph)
+{
+	ImVec2 c((x + graph->translationSrc.x) * graph->scaleSrc.x + graph->translationDst.x + graph->scrollingDst.x
+	, (y + graph->translationSrc.y) * graph->scaleSrc.y + graph->translationDst.y + graph->scrollingDst.y);
+	dw->AddCircle(c,5.0f,col,5,3.0f);
+}
+
+void Graph_PointY::DrawPoints_Tip(ImDrawList* drawList, GraphA* graph)
+{
+	graph->is_tipped=false;
+	if(ptX.size()==0)return;
+	if (yAddr.type < Address::AD_VECTOR2)//not vector
+	{
+		int last=ptX.size()-1;
+		for (int i = ptBegin; i < last; i++)
+		{
+			DrawPoints_Tip_Single(ptX[i],ptY[i],ptX[i+1],ptY[i+1],drawList,graph,color[0]);
+		}
+		if (ptBegin != 0)
+		{
+			DrawPoints_Tip_Single(ptX[last], ptY[last], ptX[0], ptY[0], drawList, graph, color[0]);
+			last=ptBegin-1;
+			for (int i = 0; i < last; i++)
+			{
+				DrawPoints_Tip_Single(ptX[i], ptY[i], ptX[i + 1], ptY[i + 1], drawList, graph, color[0]);
+			}
+		}
+		DrawCircle(ptX[last], ptY[last], color[0], drawList, graph);
+	}
+	else if(yAddr.type==Address::AD_VECTOR2){
+		int last = ptX.size() - 1;
+		for (int i = ptBegin,j=ptBegin*2; i < last; i++,j+=2)
+		{
+			DrawPoints_Tip_Single(ptX[i], ptY[j], ptX[i + 1], ptY[j + 2], drawList, graph, color[0]);
+			DrawPoints_Tip_Single(ptX[i], ptY[j+1], ptX[i + 1], ptY[j + 3], drawList, graph, color[1]);
+		}
+		if (ptBegin != 0)
+		{
+			DrawPoints_Tip_Single(ptX[last], ptY[last*2], ptX[0], ptY[0], drawList, graph, color[0]);
+			DrawPoints_Tip_Single(ptX[last], ptY[last*2+1], ptX[0], ptY[1], drawList, graph, color[1]);
+			last = ptBegin - 1;
+			for (int i = 0,j=0; i < last; i++,j+=2)
+			{
+				DrawPoints_Tip_Single(ptX[i], ptY[j], ptX[i + 1], ptY[j + 2], drawList, graph, color[0]);
+				DrawPoints_Tip_Single(ptX[i], ptY[j + 1], ptX[i + 1], ptY[j + 3], drawList, graph, color[1]);
+			}
+		}
+		DrawCircle(ptX[last], ptY[last * 2], color[0], drawList, graph);
+		DrawCircle(ptX[last], ptY[last * 2 + 1], color[1], drawList, graph);
+	}
+	else if (yAddr.type == Address::AD_VECTOR3)
+	{
+		int last = ptX.size() - 1;
+		for (int i = ptBegin, j = ptBegin * 3; i < last; i++, j += 3)
+		{
+			DrawPoints_Tip_Single(ptX[i], ptY[j], ptX[i + 1], ptY[j + 3], drawList, graph, color[0]);
+			DrawPoints_Tip_Single(ptX[i], ptY[j + 1], ptX[i + 1], ptY[j + 4], drawList, graph, color[1]);
+			DrawPoints_Tip_Single(ptX[i], ptY[j + 2], ptX[i + 1], ptY[j + 5], drawList, graph, color[1]);
+		}
+		if (ptBegin != 0)
+		{
+			DrawPoints_Tip_Single(ptX[last], ptY[last * 3], ptX[0], ptY[0], drawList, graph, color[0]);
+			DrawPoints_Tip_Single(ptX[last], ptY[last * 3 + 1], ptX[0], ptY[1], drawList, graph, color[1]);
+			DrawPoints_Tip_Single(ptX[last], ptY[last * 3 + 2], ptX[0], ptY[2], drawList, graph, color[1]);
+			last = ptBegin - 1;
+			for (int i = 0, j = 0; i < last; i++, j += 3)
+			{
+				DrawPoints_Tip_Single(ptX[i], ptY[j], ptX[i + 1], ptY[j + 3], drawList, graph, color[0]);
+				DrawPoints_Tip_Single(ptX[i], ptY[j + 1], ptX[i + 1], ptY[j + 4], drawList, graph, color[1]);
+				DrawPoints_Tip_Single(ptX[i], ptY[j + 2], ptX[i + 1], ptY[j + 5], drawList, graph, color[1]);
+			}
+		}
+		DrawCircle(ptX[last], ptY[last * 3], color[0], drawList, graph);
+		DrawCircle(ptX[last], ptY[last * 3 + 1], color[1], drawList, graph);
+		DrawCircle(ptX[last], ptY[last * 3 + 2], color[2], drawList, graph);
+		
+	}
+	else{//vector4
+		int last = ptX.size() - 1;
+		for (int i = ptBegin, j = ptBegin * 3; i < last; i++, j += 3)
+		{
+			DrawPoints_Tip_Single(ptX[i], ptY[j], ptX[i + 1], ptY[j + 4], drawList, graph, color[0]);
+			DrawPoints_Tip_Single(ptX[i], ptY[j + 1], ptX[i + 1], ptY[j + 5], drawList, graph, color[1]);
+			DrawPoints_Tip_Single(ptX[i], ptY[j + 2], ptX[i + 1], ptY[j + 6], drawList, graph, color[1]);
+			DrawPoints_Tip_Single(ptX[i], ptY[j + 3], ptX[i + 1], ptY[j + 7], drawList, graph, color[1]);
+		}
+		if (ptBegin != 0)
+		{
+			DrawPoints_Tip_Single(ptX[last], ptY[last * 4], ptX[0], ptY[0], drawList, graph, color[0]);
+			DrawPoints_Tip_Single(ptX[last], ptY[last * 4 + 1], ptX[0], ptY[1], drawList, graph, color[1]);
+			DrawPoints_Tip_Single(ptX[last], ptY[last * 4 + 2], ptX[0], ptY[2], drawList, graph, color[1]);
+			DrawPoints_Tip_Single(ptX[last], ptY[last * 4 + 3], ptX[0], ptY[3], drawList, graph, color[1]);
+			last = ptBegin - 1;
+			for (int i = 0, j = 0; i < last; i++, j += 3)
+			{
+				DrawPoints_Tip_Single(ptX[i], ptY[j], ptX[i + 1], ptY[j + 4], drawList, graph, color[0]);
+				DrawPoints_Tip_Single(ptX[i], ptY[j + 1], ptX[i + 1], ptY[j + 5], drawList, graph, color[1]);
+				DrawPoints_Tip_Single(ptX[i], ptY[j + 2], ptX[i + 1], ptY[j + 6], drawList, graph, color[1]);
+				DrawPoints_Tip_Single(ptX[i], ptY[j + 3], ptX[i + 1], ptY[j + 7], drawList, graph, color[1]);
+			}
+		}
+		DrawCircle(ptX[last], ptY[last * 4], color[0], drawList, graph);
+		DrawCircle(ptX[last], ptY[last * 4 + 1], color[1], drawList, graph);
+		DrawCircle(ptX[last], ptY[last * 4 + 2], color[2], drawList, graph);
+		DrawCircle(ptX[last], ptY[last * 4 + 3], color[3], drawList, graph);
+		
+	}
+}
+
+void GraphA::Draw(ImDrawList* drawList, ImVec2 cv0, ImVec2 cvsz)
+{
+	this->AutoResize(cv0,cvsz);
+	//grid
+	float edy = cv0.y + cvsz.y, edx = cv0.x + cvsz.x;
+	if (this->maxPoint.x != -FLT_MAX && this->is_grid_open)//have lines drawed
+	{
+		{
+			
+			if (is_y_reversed)
+			{
+				int powery = floor(log10f(-cvsz.y / this->scaleSrc.y));
+				float dy_src = pow(10, powery);//src's dy
+				float cv0y2 = (cv0.y - scrollingDst.y - translationDst.y) / scaleSrc.y - translationSrc.y;
+				float sty_src = floor(cv0y2 / dy_src) * dy_src + dy_src;
+				float sty = (sty_src + translationSrc.y) * scaleSrc.y + scrollingDst.y + translationDst.y;
+				float dy = -dy_src * scaleSrc.y * 0.2f;//each grid have 5*5 small grids
+				for (; sty < edy;)
+				{
+					char pos[20];
+					sprintf_s(pos, 20, "%g", sty_src);
+					drawList->AddText(ImVec2(cv0.x, sty), IM_COL32(200, 200, 200, 255), pos);
+					drawList->AddLine(ImVec2(cv0.x, sty), ImVec2(edx, sty), IM_COL32(200, 200, 200, 120), 1.0f); sty += dy;
+
+					drawList->AddLine(ImVec2(cv0.x, sty), ImVec2(edx, sty), IM_COL32(200, 200, 200, 40), 1.0f); sty += dy;
+					drawList->AddLine(ImVec2(cv0.x, sty), ImVec2(edx, sty), IM_COL32(200, 200, 200, 40), 1.0f); sty += dy;
+					drawList->AddLine(ImVec2(cv0.x, sty), ImVec2(edx, sty), IM_COL32(200, 200, 200, 40), 1.0f); sty += dy;
+					drawList->AddLine(ImVec2(cv0.x, sty), ImVec2(edx, sty), IM_COL32(200, 200, 200, 40), 1.0f); sty += dy;
+					sty_src -= dy_src;
+				}
+			}
+			else
+			{
+				int powery = floor(log10f(cvsz.y / this->scaleSrc.y));
+				float dy_src = pow(10, powery);//src's dy
+				float cv0y2 = (cv0.y - scrollingDst.y - translationDst.y) / scaleSrc.y - translationSrc.y;
+				float sty_src = floor(cv0y2 / dy_src) * dy_src - dy_src;
+				float sty = (sty_src + translationSrc.y) * scaleSrc.y + scrollingDst.y + translationDst.y;
+				float dy = dy_src * scaleSrc.y * 0.2f;//each grid have 5*5 small grids
+				for (; sty < edy;)
+				{
+					char pos[20];
+					sprintf_s(pos, 20, "%g", sty_src);
+					drawList->AddText(ImVec2(cv0.x, sty), IM_COL32(200, 200, 200, 255), pos);
+					drawList->AddLine(ImVec2(cv0.x, sty), ImVec2(edx, sty), IM_COL32(200, 200, 200, 120), 1.0f); sty += dy;
+
+					drawList->AddLine(ImVec2(cv0.x, sty), ImVec2(edx, sty), IM_COL32(200, 200, 200, 40), 1.0f); sty += dy;
+					drawList->AddLine(ImVec2(cv0.x, sty), ImVec2(edx, sty), IM_COL32(200, 200, 200, 40), 1.0f); sty += dy;
+					drawList->AddLine(ImVec2(cv0.x, sty), ImVec2(edx, sty), IM_COL32(200, 200, 200, 40), 1.0f); sty += dy;
+					drawList->AddLine(ImVec2(cv0.x, sty), ImVec2(edx, sty), IM_COL32(200, 200, 200, 40), 1.0f); sty += dy;
+					sty_src += dy_src;
+				}
+			}
+				
+		}
+		{
+			int powerx = floor(log10f(fabsf(cvsz.x / this->scaleSrc.x)));
+			float dx_src = pow(10, powerx);//src's dx
+			float cv0x2 = (cv0.x - scrollingDst.x - translationDst.x) / scaleSrc.x - translationSrc.x;
+			float stx_src = floor(cv0x2/dx_src) * dx_src - dx_src;
+			float stx = (stx_src + translationSrc.x) * scaleSrc.x + scrollingDst.x + translationDst.x;
+			float dx = dx_src * scaleSrc.x * 0.2f;//each grid have 5*5 small grids
+			for (; stx < edx;)
+			{
+				char pos[20];
+				sprintf_s(pos, 20, "%g", stx_src);
+				drawList->AddText(ImVec2(stx,cv0.y), IM_COL32(200, 200, 200, 255), pos);
+				drawList->AddLine(ImVec2(stx,cv0.y), ImVec2(stx, edy), IM_COL32(200, 200, 200, 120), 1.0f); stx += dx;
+				drawList->AddLine(ImVec2(stx,cv0.y), ImVec2(stx, edy), IM_COL32(200, 200, 200, 40), 1.0f); stx += dx;
+				drawList->AddLine(ImVec2(stx,cv0.y), ImVec2(stx, edy), IM_COL32(200, 200, 200, 40), 1.0f); stx += dx;
+				drawList->AddLine(ImVec2(stx,cv0.y), ImVec2(stx, edy), IM_COL32(200, 200, 200, 40), 1.0f); stx += dx;
+				drawList->AddLine(ImVec2(stx,cv0.y), ImVec2(stx,edy), IM_COL32(200, 200, 200, 40), 1.0f); stx += dx;
+				stx_src += dx_src;
+			}
+		}
+	}
+	//init
+	minPoint.x = FLT_MAX;
+	minPoint.y = FLT_MAX;
+	maxPoint.x = -FLT_MAX;
+	maxPoint.y = -FLT_MAX;
+	//axis
+	float axOri = scaleSrc.x * translationSrc.x + translationDst.x + scrollingDst.x;
+	float ayOri = scaleSrc.y * translationSrc.y + translationDst.y + scrollingDst.y;
+
+	drawList->AddLine(ImVec2(axOri,ayOri),ImVec2(edx,ayOri),IM_COL32(255,0,0,255),1.0f);//x+
+	drawList->AddLine(ImVec2(axOri,ayOri),ImVec2(cv0.x,ayOri),IM_COL32(155,0,0,255),1.0f);//x-
+	if (is_y_reversed)
+	{
+		drawList->AddLine(ImVec2(axOri,ayOri),ImVec2(axOri,cv0.y),IM_COL32(255,255,0,255),1.0f);//y+
+		drawList->AddLine(ImVec2(axOri,ayOri),ImVec2(axOri,edy),IM_COL32(155,155,0,255),1.0f);//y-
+	}else{
+		drawList->AddLine(ImVec2(axOri, ayOri), ImVec2(axOri, cv0.y), IM_COL32(155, 155, 0, 255), 1.0f);//y-
+		drawList->AddLine(ImVec2(axOri, ayOri), ImVec2(axOri, edy), IM_COL32(255, 255, 0, 255), 1.0f);//y+
+	}
+	//point
+	for (auto &x : this->points)
+		for (auto& i : x.second)
+			i.DrawPoints_Tip(drawList,this);
+}
+
+void GraphA::Update()
+{
+	if (rate!=0)
+	{
+		if (drawCount != 0)
+		{
+			drawCount++;
+			if (drawCount >= rate)drawCount = 0;
+			return;
+		}
+		drawCount++;
+	}
+	for (auto& i : this->points)
+	{
+		i.first.GetPointer();
+		if (!i.first.is_bad_addr)
+		{
+			float x=0.0f;
+#define GET_Y(T) T Y;i.first.GetValueUnSafe(&Y);x=Y;break;
+			switch (i.first.type)
+			{
+			case Address::AD_BYTE: {GET_Y(BYTE)}
+			case Address::AD_WORD: {GET_Y(WORD)}
+			case Address::AD_DWORD: {GET_Y(int)}
+			case Address::AD_QWORD: {GET_Y(long long int)}
+			case Address::AD_FLOAT: {GET_Y(float)}
+			case Address::AD_DOUBLE: {GET_Y(double)}
+			default:return;
+			}
+#undef GET_Y(T) T Y;yAddr.GetValueUnSafe(&Y);x=Y;
+			for (auto& j : i.second)
+			{
+				j.PushPoint(x);
+			}
+		}
+	}
+}
+
+void GraphA::AutoResize(ImVec2 cv0, ImVec2 cvsz)
+{
+	if (minPoint.x == FLT_MAX)//no one point/only one point
+	{
+		scaleSrc=ImVec2(1,1);
+		scrollingDst=ImVec2(0,0);
+		translationDst=ImVec2(0,0);
+		translationSrc=ImVec2(0,0);
+	}else if (maxPoint.x - minPoint.x == 0 || maxPoint.y - minPoint.y == 0)
+	{
+		if (is_y_reversed)
+		{
+			scaleSrc = ImVec2(1, -1);
+			float m = min(cvsz.x * 0.05f, cvsz.y * 0.05f);
+			translationDst.x = m + cv0.x;
+			translationDst.y = -m + cv0.y + cvsz.y;
+			translationSrc.x = -minPoint.x;
+			translationSrc.y = -minPoint.y;
+		}else{
+			scaleSrc = ImVec2(1, 1);
+			float m = min(cvsz.x * 0.05f, cvsz.y * 0.05f);
+			translationDst.x = m + cv0.x;
+			translationDst.y = -m + cv0.y + cvsz.y;
+			translationSrc.x = -minPoint.x;
+			translationSrc.y = -minPoint.y;
+		}
+
+	}else{
+		if (is_y_reversed)
+		{
+			float m = min(cvsz.x * 0.05f, cvsz.y * 0.05f);
+			scaleSrc.x = (cvsz.x - m * 2.0f) / (maxPoint.x - minPoint.x);
+			scaleSrc.y = -(cvsz.y - m * 2.0f) / (maxPoint.y - minPoint.y);
+			translationDst.x = m + cv0.x;
+			translationDst.y = -m + cv0.y+cvsz.y;
+			translationSrc.x = -minPoint.x;
+			translationSrc.y = -minPoint.y;
+		}else{
+
+			float m = min(cvsz.x * 0.05f, cvsz.y * 0.05f);
+			scaleSrc.x = (cvsz.x - m * 2.0f) / (maxPoint.x - minPoint.x);
+			scaleSrc.y = (cvsz.y - m * 2.0f) / (maxPoint.y - minPoint.y);
+			translationDst.x = m + cv0.x;
+			translationDst.y = m + cv0.y;
+			translationSrc.x = -minPoint.x;
+			translationSrc.y = -minPoint.y;
+		}
+	}
+}
+
+std::list<GraphA> GraphA::graphs;
+void GraphWindow()
+{
+	ImGui::BeginTabBar("GrBar", ImGuiTabBarFlags_Reorderable);
+	for(auto iter=GraphA::graphs.begin();iter!=GraphA::graphs.end();)
+	{
+		if (ImGui::BeginTabItem(iter->nameWithID.c_str(), 0))
+		{
+
+			ImVec2 canvas_p0 = ImGui::GetCursorScreenPos();      // ImDrawList API uses screen coordinates!
+			ImVec2 canvas_sz = ImGui::GetContentRegionAvail();   // Resize canvas to what's available
+			if (canvas_sz.x < 50.0f) canvas_sz.x = 50.0f;
+			if (canvas_sz.y < 50.0f) canvas_sz.y = 50.0f;
+			ImGuiIO& io = ImGui::GetIO();
+			ImDrawList* draw_list = ImGui::GetWindowDrawList();
+
+			// Draw border and background color
+			ImVec2 canvas_p1 = ImVec2(canvas_p0.x + canvas_sz.x, canvas_p0.y + canvas_sz.y);
+			draw_list->AddRectFilled(canvas_p0, canvas_p1, IM_COL32(50, 50, 50, 255));
+			draw_list->AddRect(canvas_p0, canvas_p1, IM_COL32(255, 255, 255, 255));
+
+			//draw
+			draw_list->PushClipRect(canvas_p0, canvas_p1, true);
+			iter->Update();
+			iter->Draw(draw_list, canvas_p0, canvas_sz);
+			draw_list->PopClipRect();
+			//click in cv
+			{
+				ImGui::InvisibleButton("cvBt", canvas_sz, ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
+				//const bool is_hovered = ImGui::IsItemHovered(); // Hovered
+				const bool is_active = ImGui::IsItemActive();   // Held
+				ImVec2 drag_delta = ImGui::GetMouseDragDelta(ImGuiMouseButton_Right);
+				if (ImGui::IsMouseReleased(ImGuiMouseButton_Right) && drag_delta.x == 0.0f && drag_delta.y == 0.0f)
+					ImGui::OpenPopupContextItem("Cvct");
+				if (ImGui::BeginPopup("Cvct"))
+				{
+					if (ImGui::MenuItem("Clear")) { ImGui::EndPopup(); iter->Clear(); }
+					if (ImGui::MenuItem("Close", NULL, false)) { iter = GraphA::graphs.erase(iter); ImGui::EndPopup(); ImGui::EndTabItem(); continue; }
+				}
+				if (is_active && ImGui::IsMouseDragging(ImGuiMouseButton_Right))
+				{
+					iter->scrollingDst.x += io.MouseDelta.x;
+					iter->scrollingDst.y += io.MouseDelta.y;
+				}
+			}
+			ImGui::EndTabItem();
+		}
+
+		iter++;
+	}
+	EndTabBar();
+	ImGui::SameLine();
+
+}
+
 void SingleAddrViewer(Address& addr)
 {
 	bool is_pointer=addr.offs.size()>=1;
@@ -160,7 +623,7 @@ void SingleAddrViewer(Address& addr)
 		}
 	}
 	//pointer check
-	Checkbox("pointer", &is_pointer);
+	ImGui::Checkbox("pointer", &is_pointer);
 	if (is_pointer)
 	{
 		if(addr.offs.size()==0)
@@ -173,7 +636,7 @@ void SingleAddrViewer(Address& addr)
 				int* offs = (int*)&(addr.offs[i]);
 				if (Button("<"))
 					*offs -= 4;
-				SameLine();
+				ImGui::SameLine();
 				char lastOfsBuf[10];
 				sprintf_s(lastOfsBuf, 10, *offs < 0 ? "-%X" : "%X", * offs < 0 ? (-*offs) : *offs);
 				char name[15];
@@ -181,10 +644,10 @@ void SingleAddrViewer(Address& addr)
 				ImGui::SetNextItemWidth(80);
 				if (InputText(name, lastOfsBuf, 10))
 					if (!sscanf_s(lastOfsBuf, "%x", offs))offs = 0;//auto changes
-				SameLine();
+				ImGui::SameLine();
 				if (Button(">"))
 					*offs += 4;
-				SameLine();
+				ImGui::SameLine();
 				if (addr.bad_count+2 <= i)
 					Text("????????+%X=????????", *offs, addr.offVal[i + 1]);
 				else
@@ -433,7 +896,7 @@ void AddrViewer(bool* p_open)
 				if (ImGui::BeginTabItem("Description"))
 				{
 					ImGui::TextWrapped("%s", addr.description.c_str());
-					Text("val: %s", addr.GetValueStrUnsafe());
+					Text("val: %s", addr.GetValueStrUnSafe());
 					ImGui::Separator();
 					if(ImGui::Combo("ValueType", (int*)&(addr.type),Address::typeStr,IM_ARRAYSIZE(Address::typeStr)))
 					ImGui::Separator();
@@ -466,6 +929,7 @@ void AddrViewer(bool* p_open)
 	}
 
 	//bottom
+	
 	{
 		ImGui::BeginChild("plot view", ImVec2(0, -ImGui::GetFrameHeightWithSpacing())); // Leave room for 1 line below us
 		ImGui::Separator();
@@ -500,18 +964,26 @@ void AddrViewer(bool* p_open)
 					Text("the addr selected:\nX=%s(%d)\nY=%s(%d)", 
 					lastSecondSelected->first.description.c_str(),lastSecondSelected->first.count,
 						lastSelected->first.description.c_str(), lastSelected->first.count);
-					InputText("###Graph_name", p, 40);
+					InputText("###GrN", p, 40);
 					SameLine();
 					if (ImGui::Button("apply"))
 					{
-						scrolling.push_back(ImVec2(0, 0));
+						/*scrolling.push_back(ImVec2(0, 0));
 						char label[50];
 						sprintf_s(label,50, "%s###%d", p,counter); counter++;
 						tabNames.push_back(std::string(label));
 						all_points.push_back(std::list<ImVec2>());
 						all_scales.push_back(ImVec2(1, 1));
 						limCood.push_back(std::make_pair(ImVec2(0, 0), ImVec2(1, 1)));
-						coodDes.push_back(std::make_pair(lastSecondSelected->first, lastSelected->first));
+						coodDes.push_back(std::make_pair(lastSecondSelected->first, lastSelected->first));*/
+						char label[50];
+						sprintf_s(label, 50, "%s###%d", p, counter); counter++;
+						std::string s(label);
+						GraphA G(s);
+						Graph_PointY gpy(lastSelected->first);
+						std::list<Graph_PointY> gpl;gpl.push_back(gpy);
+						G.points.push_back(std::make_pair(lastSecondSelected->first, gpl));
+						GraphA::graphs.push_back(G);
 						ImGui::CloseCurrentPopup();
 					}
 				}
@@ -519,6 +991,9 @@ void AddrViewer(bool* p_open)
 			}
 
 		}
+		Begin("gw");
+		GraphWindow();
+		End();
 		//>>>
 		SameLine();
 		if (ImGui::Button("Remove graph"))
@@ -550,8 +1025,9 @@ void AddrViewer(bool* p_open)
 		}
 		
 		//>>>
+		
 		nowSelectTab=-1;
-		if (ImGui::BeginTabBar("GrBar", ImGuiTabBarFlags_Reorderable))
+		/*if (ImGui::BeginTabBar("GrBar", ImGuiTabBarFlags_Reorderable))
 		{
 			for (int i = 0; i < tabNames.size(); i++)
 			{
@@ -763,11 +1239,19 @@ void AddrViewer(bool* p_open)
 			}
 			ImGui::EndTabBar();
 		}
-		
+		*/
 		ImGui::EndChild();
+		
 		{
 			if (ImGui::Button("Add addressX"))
 			{
+				Address b(0);
+				b.count=3;
+				b.base = 0x004E73FC;
+				b.type = b.AD_DWORD;
+				b.description = std::string("Time");
+				addrs.push_back(std::make_pair(b, false));
+
 				Address a(0);
 				a.base=0x004e9bb8;
 				a.type=a.AD_FLOAT;
